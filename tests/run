@@ -2,7 +2,7 @@
 # See: https://github.com/kward/shunit2
 # Usage: tests/run [OPTION]... IMAGE_NAME
 # Options: --verbose --no-cleanup
-# Example: tests/run atmoz/sftp:alpine
+# Example: tests/run david-garcia-garcia/sftp:alpine
 
 # Booleans
 OPTION_TRUE=0
@@ -24,7 +24,7 @@ while [ "$#" -ge 1 ]; do
 done
 
 testDir="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
-tmpDir="$(mktemp -d /tmp/atmoz_sftp_XXXX)"
+tmpDir="$(mktemp -d /tmp/david_garcia_garcia_sftp_XXXX)"
 sshKeyPri="$tmpDir/rsa"
 sshKeyPub="$tmpDir/rsa.pub"
 sshHostEd25519Key="$tmpDir/ssh_host_ed25519_key"
@@ -77,7 +77,7 @@ function oneTimeSetUp() {
 
 function setUp() {
     # shellcheck disable=SC2154
-    containerName="atmoz_sftp_${_shunit_test_}"
+    containerName="david_garcia_garcia_sftp_${_shunit_test_}"
     containerTmpDir="$(mktemp -d "/tmp/${containerName}_XXXX")"
     export containerName containerTmpDir
 
