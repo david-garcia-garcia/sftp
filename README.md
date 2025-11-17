@@ -99,12 +99,28 @@ All SSHD settings can be configured via environment variables:
 | `SSHD_MAX_STARTUPS` | `3` | Maximum concurrent unauthenticated connections |
 | `SSHD_LOG_LEVEL` | `INFO` | SSH log level (values: `QUIET`, `FATAL`, `ERROR`, `INFO`, `VERBOSE`, `DEBUG`, `DEBUG1`, `DEBUG2`, `DEBUG3`) |
 
+#### Extending SSHD Configuration
+
+You can extend the SSH server configuration by mounting additional configuration files to `/etc/ssh/sshd_config.d/`. Files in this directory (with `.conf` extension) will be automatically included and can override default settings.
+
+**Note**: Values in sub-files generally override values in the main `sshd_config` file.
+
+Example:
+```bash
+docker run \
+  -v /path/to/custom.conf:/etc/ssh/sshd_config.d/custom.conf:ro \
+  -e SFTP_USERS="user1:pass1" \
+  -p 2222:22 \
+  david-garcia-garcia/sftp
+```
+
 ### User Configuration
 
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SFTP_USERS` | _(none)_ | Space-separated list of users to create (syntax: `user:pass[:e][:uid[:gid[:dir1[,dir2]...][:expiry_date]]]`) |
 | `SFTP_USER_DIRS_BASE` | _(none)_ | Optional base path for user directories. When set, user directories are created in `$SFTP_USER_DIRS_BASE/$user/$dirPath` and symlinked from `/home/$user/$dirPath`. Useful for SMB/SAMBA mounts or external storage where file permissions cannot be changed. |
+| `SFTP_READONLY` | _(none)_ | When set to `true`, enables full readonly mode for SFTP. Users will be able to download files but cannot upload, delete, or modify files. This adds the `-R` flag to `ForceCommand internal-sftp`. |
 
 Example usage:
 ```bash
@@ -138,6 +154,26 @@ This will:
 - Maintain the chroot structure while storing data on external storage
 
 **Note**: The symlinks are owned by root (required for chroot), while the actual directories may have different permissions depending on your mount configuration.
+
+#### Readonly Mode
+
+To enable full readonly mode for all SFTP users (download only, no uploads or modifications), set `SFTP_READONLY=true`:
+
+```bash
+docker run \
+  -e SFTP_READONLY=true \
+  -e SFTP_USERS="user1:pass1:::download" \
+  -p 2222:22 \
+  david-garcia-garcia/sftp
+```
+
+When readonly mode is enabled, users can:
+- ✅ Download files
+- ✅ List directories
+- ❌ Upload files
+- ❌ Delete files
+- ❌ Modify files
+- ❌ Create directories
 
 # Usage
 

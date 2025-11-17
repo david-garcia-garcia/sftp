@@ -42,6 +42,14 @@ if [ -f /etc/ssh/sshd_config.template ]; then
     export SSHD_LOG_LEVEL="LogLevel $SSHD_LOG_LEVEL"
     
     envsubst < /etc/ssh/sshd_config.template > /etc/ssh/sshd_config
+    
+    # Enable full readonly config if SFTP_READONLY is set to true
+    if [ -n "$SFTP_READONLY" ]; then
+        if [ "$SFTP_READONLY" = "true" ]; then
+            log "Enabling readonly mode (SFTP_READONLY=true)"
+            sed -i 's/ForceCommand internal-sftp/ForceCommand internal-sftp -R/' /etc/ssh/sshd_config
+        fi
+    fi
 fi
 
 # Backward compatibility with legacy config path

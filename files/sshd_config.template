@@ -38,3 +38,6 @@ ChrootDirectory %h
 # Log level
 ${SSHD_LOG_LEVEL}
 
+# Apply config from sub-files. Values in sub-files generally overrides values here.
+Include /etc/ssh/sshd_config.d/*.conf
+
