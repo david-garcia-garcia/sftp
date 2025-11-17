@@ -222,6 +222,17 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      
+      - name: Verify tag is on master branch
+        run: |
+          TAG_NAME=${GITHUB_REF#refs/tags/}
+          git fetch origin master
+          if ! git branch -r --contains $(git rev-parse $TAG_NAME) | grep -q "origin/master"; then
+            echo "Error: Tag $TAG_NAME is not on master branch. Releases can only be created from master."
+            exit 1
+          fi
       
       - name: Load versions and generate release notes
         id: release_notes

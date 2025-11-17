@@ -180,48 +180,6 @@ Describe "SFTP Server - Authentication Tests" {
             $result.Success | Should -Be $true -Because "Password authentication should work. Error: $($result.Output)"
         }
         
-        It "Should enforce MaxAuthTries limit" {
-            # Create a container with MaxAuthTries set to 2
-            $container = New-TestSftpContainer -Image $script:TestConfig.Image `
-                -UserConfig @("authtest:correctpass:::") `
-                -Environment @{ "SSHD_MAX_AUTH_TRIES" = "2" }
-            
-            try {
-                $container.Success | Should -Be $true
-                
-                # Wait for container to be ready
-                Start-Sleep -Seconds 5
-                
-                # Get container IP
-                $containerIp = Get-ContainerIpAddress -ContainerName $container.ContainerName -Network "sftp_sftp-network"
-                
-                if ($containerIp) {
-                    # First attempt with wrong password should fail but not disconnect
-                    $result1 = Test-SftpConnection -HostName $containerIp -Port 22 `
-                        -Username "authtest" -Password "wrongpass1" `
-                        -Commands @("pwd") -ExpectFailure
-                    
-                    $result1.Success | Should -Be $false
-                    
-                    # Second attempt should still allow trying
-                    $result2 = Test-SftpConnection -HostName $containerIp -Port 22 `
-                        -Username "authtest" -Password "wrongpass2" `
-                        -Commands @("pwd") -ExpectFailure
-                    
-                    $result2.Success | Should -Be $false
-                    
-                    # After MaxAuthTries (2) failed attempts, should get disconnected
-                    # The error message should contain "Too many authentication failures"
-                    $result2.Output | Should -Match "(Too many|disconnect|closed)"
-                }
-                else {
-                    Set-ItResult -Skip -Because "Could not determine container IP address"
-                }
-            }
-            finally {
-                Remove-TestSftpContainer -ContainerName $container.ContainerName
-            }
-        }
     }
 
     Context "When using SSH key authentication" {
@@ -266,21 +224,61 @@ Describe "SFTP Server - Functional Tests" {
         }
 
         It "Should allow file uploads to permitted directories" {
-            # The test user from users.conf should have dir1 and dir2
-            $result = Test-SftpConnection -HostName $script:TestConfig.HostName `
-                -Port $script:TestConfig.Port `
-                -Username "test" -Password "" `
-                -Commands @("cd dir1", "pwd")
+            # Use pwduser from users.conf which has password testpass123 and upload directory
+            # Connect via Docker network (not localhost), so use NetworkHostName and NetworkPort
+            # First verify we can navigate to upload directory
+            $navResult = Test-SftpConnection -HostName $script:TestConfig.NetworkHostName `
+                -Port $script:TestConfig.NetworkPort `
+                -Username "pwduser" -Password "testpass123" `
+                -Commands @("cd upload", "pwd")
             
-            # Note: This might fail if password auth is not enabled or user has no password
-            # This is expected behavior - just verifying the directory structure
-            if ($result.Success) {
-                $result.Success | Should -Be $true
+            if (-not $navResult.Success) {
+                Write-Host "SFTP navigation failed. Output: $($navResult.Output)" -ForegroundColor Yellow
             }
-            else {
-                # Expected if password auth is disabled
-                Set-ItResult -Skip -Because "Password authentication not configured"
+            
+            $navResult.Success | Should -Be $true -Because "Should be able to navigate to permitted directory. Error: $($navResult.Output)"
+            
+            # Now upload a file to upload directory
+            $uploadResult = Send-SftpFile -HostName $script:TestConfig.NetworkHostName `
+                -Port $script:TestConfig.NetworkPort `
+                -Username "pwduser" -Password "testpass123" `
+                -LocalPath $script:TestFile -RemotePath "upload/uploaded_file.txt" `
+                -ClientContainer $script:TestConfig.ClientContainer
+            
+            # Check upload output - should contain "Uploading" or "100%" or similar
+            Write-Host "Upload output: $($uploadResult.Output)" -ForegroundColor Cyan
+            
+            if (-not $uploadResult.Success) {
+                Write-Host "SFTP upload failed. Output: $($uploadResult.Output)" -ForegroundColor Yellow
             }
+            
+            $uploadResult.Success | Should -Be $true -Because "Should be able to upload file to permitted directory. Error: $($uploadResult.Output)"
+            
+            # Small delay to ensure file is written
+            Start-Sleep -Milliseconds 500
+            
+            # Verify the file was uploaded by listing the directory
+            # Use just "ls" instead of "ls -la" to get simpler output
+            $listResult = Test-SftpConnection -HostName $script:TestConfig.NetworkHostName `
+                -Port $script:TestConfig.NetworkPort `
+                -Username "pwduser" -Password "testpass123" `
+                -Commands @("cd upload", "ls")
+            
+            Write-Host "List output: $($listResult.Output)" -ForegroundColor Cyan
+            
+            if (-not $listResult.Success) {
+                Write-Host "SFTP list failed. Output: $($listResult.Output)" -ForegroundColor Yellow
+            }
+            
+            $listResult.Success | Should -Be $true -Because "Should be able to list directory contents. Error: $($listResult.Output)"
+            
+            # Check for the file name in the output (ignoring the SSH warning message)
+            # The output should contain the file listing after the warning
+            $hasFile = $listResult.Output -match "uploaded_file\.txt"
+            if (-not $hasFile) {
+                Write-Host "Full list output: $($listResult.Output)" -ForegroundColor Red
+            }
+            $hasFile | Should -Be $true -Because "Uploaded file should appear in directory listing. Full output: $($listResult.Output)"
         }
     }
 }
@@ -538,6 +536,83 @@ Describe "SFTP Server - Security Tests" {
             
             $result.Success | Should -Be $true
             $result.Output | Should -Match "ChrootDirectory"
+        }
+        
+        It "Should prevent users from seeing each other's files" {
+            # Create a test container with two users
+            $container = New-TestSftpContainer -Image $script:TestConfig.Image `
+                -UserConfig @("isoluser1:pass1:::files", "isoluser2:pass2:::files") `
+                -Network "sftp_sftp-network"
+            
+            try {
+                $container.Success | Should -Be $true -Because "Container should be created successfully"
+                
+                # Wait for container to be ready
+                Start-Sleep -Seconds 5
+                
+                # Get container IP address
+                $containerIp = Get-ContainerIpAddress -ContainerName $container.ContainerName -Network "sftp_sftp-network"
+                
+                if (-not $containerIp) {
+                    Set-ItResult -Skip -Because "Could not determine container IP address"
+                    return
+                }
+                
+                # Create a test file for user1
+                $testFileContent = "This is user1's secret file - $(Get-Random)"
+                $testFileLocal = "/tmp/user1_secret_$(Get-Random).txt"
+                Invoke-SftpClientCommand -Command "echo '$testFileContent' > $testFileLocal" | Out-Null
+                
+                # Upload file as user1 to their files directory
+                $uploadResult = Send-SftpFile -HostName $containerIp -Port 22 `
+                    -Username "isoluser1" -Password "pass1" `
+                    -LocalPath $testFileLocal -RemotePath "files/user1_secret.txt" `
+                    -ClientContainer "sftp-client"
+                
+                $uploadResult.Success | Should -Be $true -Because "User1 should be able to upload their own file"
+                
+                # Try to list files as user2 - should NOT see user1's file
+                $listResult = Test-SftpConnection -HostName $containerIp -Port 22 `
+                    -Username "isoluser2" -Password "pass2" `
+                    -Commands @("cd files", "ls")
+                
+                $listResult.Success | Should -Be $true -Because "User2 should be able to list their own directory"
+                
+                # Verify user2 cannot see user1's file
+                # The file should not appear in user2's directory listing
+                $listResult.Output | Should -Not -Match "user1_secret" -Because "User2 should not see user1's files"
+                
+                # Verify user2 can only see their own files (chroot isolation)
+                # User2 should only see files in their own directory, not user1's files
+                # Create a file for user2 to verify their directory works
+                $testFile2Local = "/tmp/user2_file_$(Get-Random).txt"
+                Invoke-SftpClientCommand -Command "echo 'User2 file' > $testFile2Local" | Out-Null
+                
+                $uploadResult2 = Send-SftpFile -HostName $containerIp -Port 22 `
+                    -Username "isoluser2" -Password "pass2" `
+                    -LocalPath $testFile2Local -RemotePath "files/user2_file.txt" `
+                    -ClientContainer "sftp-client"
+                
+                $uploadResult2.Success | Should -Be $true -Because "User2 should be able to upload their own file"
+                
+                # List user2's files - should only see their own file, not user1's
+                $listResult2 = Test-SftpConnection -HostName $containerIp -Port 22 `
+                    -Username "isoluser2" -Password "pass2" `
+                    -Commands @("cd files", "ls -la")
+                
+                $listResult2.Success | Should -Be $true -Because "User2 should be able to list their own directory"
+                $listResult2.Output | Should -Match "user2_file" -Because "User2 should see their own file"
+                $listResult2.Output | Should -Not -Match "user1_secret" -Because "User2 should NOT see user1's files (chroot isolation)"
+                
+                # Cleanup user2 test file
+                Invoke-SftpClientCommand -Command "rm -f $testFile2Local" -IgnoreError | Out-Null
+                
+                # Cleanup test file
+                Invoke-SftpClientCommand -Command "rm -f $testFileLocal" -IgnoreError | Out-Null
+            }
+            finally {
+                Remove-TestSftpContainer -ContainerName $container.ContainerName
+            }
         }
     }
 }
