@@ -23,6 +23,35 @@ else
     startSshd=false
 fi
 
+# Configure SSHD from template
+# Set default SSHD configuration values if not provided
+export SSHD_PORT="${SSHD_PORT:-22}"
+export SSHD_PASSWORD_AUTH="${SSHD_PASSWORD_AUTH:-yes}"
+export SSHD_PUBKEY_AUTH="${SSHD_PUBKEY_AUTH:-yes}"
+export SSHD_MAX_AUTH_TRIES="${SSHD_MAX_AUTH_TRIES:-3}"
+export SSHD_LOGIN_GRACE_TIME="${SSHD_LOGIN_GRACE_TIME:-20}"
+export SSHD_MAX_STARTUPS="${SSHD_MAX_STARTUPS:-3}"
+export SSHD_LOG_LEVEL="${SSHD_LOG_LEVEL:-INFO}"
+
+# Generate sshd_config from template
+if [ -f /etc/ssh/sshd_config.template ]; then
+    log "Generating sshd_config from template..."
+    log "SSHD configuration: Port=$SSHD_PORT, PasswordAuth=$SSHD_PASSWORD_AUTH, PubkeyAuth=$SSHD_PUBKEY_AUTH, LogLevel=$SSHD_LOG_LEVEL"
+    
+    # Format log level for sshd_config (prepend "LogLevel ")
+    export SSHD_LOG_LEVEL="LogLevel $SSHD_LOG_LEVEL"
+    
+    envsubst < /etc/ssh/sshd_config.template > /etc/ssh/sshd_config
+    
+    # Enable full readonly config if SFTP_READONLY is set to true
+    if [ -n "$SFTP_READONLY" ]; then
+        if [ "$SFTP_READONLY" = "true" ]; then
+            log "Enabling readonly mode (SFTP_READONLY=true)"
+            sed -i 's/ForceCommand internal-sftp/ForceCommand internal-sftp -R/' /etc/ssh/sshd_config
+        fi
+    fi
+fi
+
 # Backward compatibility with legacy config path
 if [ ! -f "$userConfPath" ] && [ -f "$userConfPathLegacy" ]; then
     mkdir -p "$(dirname $userConfPath)"
@@ -34,8 +63,8 @@ if [ ! -f "$userConfFinalPath" ]; then
     mkdir -p "$(dirname $userConfFinalPath)"
 
     if [ -f "$userConfPath" ]; then
-        # Append mounted config to final config
-        grep -v -E "$reArgSkip" < "$userConfPath" > "$userConfFinalPath"
+        # Append mounted config to final config, filtering out empty lines and comments
+        grep -v -E "$reArgSkip" < "$userConfPath" | grep -v '^[[:space:]]*$' > "$userConfFinalPath" || true
     fi
 
     if $startSshd; then
@@ -53,11 +82,19 @@ if [ ! -f "$userConfFinalPath" ]; then
         done
     fi
 
+    # Export SFTP_READONLY so it's available in create-sftp-user subshell
+    if [ -n "$SFTP_READONLY" ]; then
+        export SFTP_READONLY
+    fi
+
     # Check that we have users in config
     if [ -f "$userConfFinalPath" ] && [ "$(wc -l < "$userConfFinalPath")" -gt 0 ]; then
         # Import users from final conf file
         while IFS= read -r user || [[ -n "$user" ]]; do
-            create-sftp-user "$user"
+            # Skip empty lines and lines that don't contain a colon (invalid format)
+            if [[ -n "$user" && "$user" =~ : ]]; then
+                create-sftp-user "$user"
+            fi
         done < "$userConfFinalPath"
     elif $startSshd; then
         log "FATAL: No users provided!"

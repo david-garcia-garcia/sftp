@@ -1,0 +1,34 @@
+# Test artifacts
+e2etests/testdata/*
+!e2etests/testdata/.gitkeep
+*.log
+
+# Docker volumes
+.docker/
+
+# PowerShell
+*.ps1xml
+
+# IDE
+.vscode/
+.idea/
+
+# Test SSH keys (generated at test time)
+e2etests/fixtures/test_rsa
+e2etests/fixtures/test_rsa.pub
+
+# Environment variables (use .env.example as template)
+.env
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+tmp/
+temp/
+*.tmp
+

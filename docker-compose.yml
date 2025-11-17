@@ -1,0 +1,92 @@
+version: '3.8'
+
+services:
+  # SFTP server - Debian variant (enabled with --profile debian)
+  sftp:
+    build:
+      context: .
+      dockerfile: Dockerfile
+      args:
+        DEBIAN_VERSION: ${DEBIAN_VERSION:-12}
+    container_name: sftp-server
+    ports:
+      - "2222:22"
+    volumes:
+      - ./e2etests/fixtures/users.conf:/etc/sftp/users.conf:ro
+      - sftp-home:/home
+      - ./e2etests/testdata:/testdata
+      - ./e2etests/fixtures/test_rsa.pub:/home/keyuser/.ssh/keys/test_rsa.pub:ro
+    environment:
+      SFTP_USERS: "user-from-env: user-from-env-2:"
+    networks:
+      - sftp-network
+    profiles:
+      - debian
+
+  # SFTP server - Alpine variant (enabled with --profile alpine)
+  sftp-alpine:
+    build:
+      context: .
+      dockerfile: Dockerfile-alpine
+      args:
+        ALPINE_VERSION: ${ALPINE_VERSION:-3.22}
+    container_name: sftp-server-alpine
+    ports:
+      - "2222:22"  # Same port as Debian - only one runs at a time via profiles
+    volumes:
+      - ./e2etests/fixtures/users.conf:/etc/sftp/users.conf:ro
+      - sftp-alpine-home:/home
+      - ./e2etests/testdata:/testdata
+      - ./e2etests/fixtures/test_rsa.pub:/home/keyuser/.ssh/keys/test_rsa.pub:ro
+    environment:
+      SFTP_USERS: "user-from-env: user-from-env-2:"
+    networks:
+      - sftp-network
+    profiles:
+      - alpine
+
+  # mmproxy - preserves original client IP
+  # Works with whichever SFTP server is active (debian or alpine profile)
+  # Note: Uses duan2001/mmproxy image (https://hub.docker.com/r/duan2001/mmproxy)
+  # Set MMPROXY_IMAGE environment variable to override the image name
+  # PORT_MAPPINGS format: "listen_port:target_port"
+  # Using host network mode for TPROXY support (required for IP preservation)
+  # Connects to SFTP server via localhost:2222 (the exposed port, same for both variants)
+  # Available in both profiles
+  mmproxy:
+    image: ${MMPROXY_IMAGE:-duan2001/mmproxy:latest}
+    container_name: mmproxy
+    network_mode: host
+    cap_add:
+      - NET_ADMIN
+    environment:
+      - PORT_MAPPINGS=2224:2222
+    restart: "no"
+    profiles:
+      - debian
+      - alpine
+
+  # Test client container - available in both profiles
+  sftp-client:
+    image: alpine:3.21
+    container_name: sftp-client
+    working_dir: /workspace
+    volumes:
+      - ./e2etests:/workspace/e2etests
+      - sftp-client-data:/data
+    networks:
+      - sftp-network
+    # No depends_on - client connects to whichever SFTP server is running
+    # mmproxy is optional - tests will check if it's running
+    entrypoint: /bin/sh
+    command: -c "apk add --no-cache openssh-client sshpass netcat-openbsd && sleep infinity"
+
+networks:
+  sftp-network:
+    driver: bridge
+
+volumes:
+  sftp-home:
+  sftp-alpine-home:
+  sftp-client-data:
+
