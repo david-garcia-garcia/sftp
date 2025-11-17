@@ -5,14 +5,14 @@
 > - **Improved environment configuration**: All SSHD settings configurable via environment variables
 > - **Template-based configuration**: `sshd_config` generated from template with `envsubst`
 
-![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/david-garcia-garcia/sftp/build.yml?logo=github) ![GitHub stars](https://img.shields.io/github/stars/david-garcia-garcia/sftp?logo=github) ![Docker Stars](https://img.shields.io/docker/stars/david-garcia-garcia/sftp?label=stars&logo=docker) ![Docker Pulls](https://img.shields.io/docker/pulls/david-garcia-garcia/sftp?label=pulls&logo=docker)
+![GitHub Workflow Status](https://img.shields.io/github/actions/workflow/status/david-garcia-garcia/sftp/build.yml?logo=github) ![GitHub stars](https://img.shields.io/github/stars/david-garcia-garcia/sftp?logo=github) ![Docker Stars](https://img.shields.io/docker/stars/davidbcn86/sftp?label=stars&logo=docker) ![Docker Pulls](https://img.shields.io/docker/pulls/davidbcn86/sftp?label=pulls&logo=docker)
 
 ![OpenSSH logo](https://raw.githubusercontent.com/david-garcia-garcia/sftp/master/openssh.png "Powered by OpenSSH")
 
 # Supported tags and respective `Dockerfile` links
 
-- [`debian`, `latest` (*Dockerfile*)](https://github.com/david-garcia-garcia/sftp/blob/master/Dockerfile) ![Docker Image Size (debian)](https://img.shields.io/docker/image-size/david-garcia-garcia/sftp/debian?label=debian&logo=debian&style=plastic)
-- [`alpine` (*Dockerfile*)](https://github.com/david-garcia-garcia/sftp/blob/master/Dockerfile-alpine) ![Docker Image Size (alpine)](https://img.shields.io/docker/image-size/david-garcia-garcia/sftp/alpine?label=alpine&logo=Alpine%20Linux&style=plastic)
+- [`debian`, `latest` (*Dockerfile*)](https://github.com/david-garcia-garcia/sftp/blob/master/Dockerfile) ![Docker Image Size (debian)](https://img.shields.io/docker/image-size/davidbcn86/sftp/debian?label=debian&logo=debian&style=plastic)
+- [`alpine` (*Dockerfile*)](https://github.com/david-garcia-garcia/sftp/blob/master/Dockerfile-alpine) ![Docker Image Size (alpine)](https://img.shields.io/docker/image-size/davidbcn86/sftp/alpine?label=alpine&logo=Alpine%20Linux&style=plastic)
 
 # Securely share your files
 
@@ -111,7 +111,7 @@ docker run \
   -v /path/to/custom.conf:/etc/ssh/sshd_config.d/custom.conf:ro \
   -e SFTP_USERS="user1:pass1" \
   -p 2222:22 \
-  david-garcia-garcia/sftp
+  davidbcn86/sftp
 ```
 
 ### User Configuration
@@ -129,7 +129,7 @@ docker run \
   -e SSHD_MAX_AUTH_TRIES=5 \
   -e SFTP_USERS="user1:pass1 user2:pass2::1001:1001:upload,download" \
   -p 2222:2222 \
-  david-garcia-garcia/sftp
+  davidbcn86/sftp
 ```
 
 **Note**: Just set the value (e.g., `VERBOSE`, `INFO`), not the full directive. The entrypoint will format it correctly for `sshd_config`.
@@ -143,7 +143,7 @@ docker run \
   -e SFTP_READONLY=true \
   -e SFTP_USERS="user1:pass1:::download" \
   -p 2222:22 \
-  david-garcia-garcia/sftp
+  davidbcn86/sftp
 ```
 
 When readonly mode is enabled, users can:
@@ -179,7 +179,7 @@ When readonly mode is enabled, users can:
 ## Simplest docker run example
 
 ```
-docker run -p 22:22 -d david-garcia-garcia/sftp foo:pass:::upload
+docker run -p 22:22 -d davidbcn86/sftp foo:pass:::upload
 ```
 
 User "foo" with password "pass" can login with sftp and upload files to a folder called "upload". No mounted directories or custom UID/GID. Later you can inspect the files and use `--volumes-from` to mount them somewhere else (or see next example).
@@ -191,7 +191,7 @@ Let's mount a directory and set UID:
 ```
 docker run \
     -v <host-dir>/upload:/home/foo/upload \
-    -p 2222:22 -d david-garcia-garcia/sftp \
+    -p 2222:22 -d davidbcn86/sftp \
     foo:pass:1001
 ```
 
@@ -199,7 +199,7 @@ docker run \
 
 ```
 sftp:
-    image: david-garcia-garcia/sftp
+    image: davidbcn86/sftp
     volumes:
         - <host-dir>/upload:/home/foo/upload
     ports:
@@ -217,7 +217,7 @@ The OpenSSH server runs by default on port 22, and in this example, we are forwa
 docker run \
     -v <host-dir>/users.conf:/etc/sftp/users.conf:ro \
     -v mySftpVolume:/home \
-    -p 2222:22 -d david-garcia-garcia/sftp
+    -p 2222:22 -d davidbcn86/sftp
 ```
 
 <host-dir>/users.conf:
@@ -235,7 +235,7 @@ You can set an expiration date for user accounts. After the expiration date, use
 ```
 docker run \
     -v <host-dir>/share:/home/foo/share \
-    -p 2222:22 -d david-garcia-garcia/sftp \
+    -p 2222:22 -d davidbcn86/sftp \
     foo:pass:1001:100:share:2024-12-31
 ```
 
@@ -244,7 +244,7 @@ Or using YYYYMMDD format:
 ```
 docker run \
     -v <host-dir>/share:/home/foo/share \
-    -p 2222:22 -d david-garcia-garcia/sftp \
+    -p 2222:22 -d davidbcn86/sftp \
     foo:pass:1001:100:share:20241231
 ```
 
@@ -262,7 +262,7 @@ Add `:e` behind password to mark it as encrypted. Use single quotes if using ter
 ```
 docker run \
     -v <host-dir>/share:/home/foo/share \
-    -p 2222:22 -d david-garcia-garcia/sftp \
+    -p 2222:22 -d davidbcn86/sftp \
     'foo:$1$0G2g0GSt$ewU0t6GXG15.0hWoOX8X9.:e:1001'
 ```
 
@@ -271,7 +271,7 @@ You can combine encrypted password with expiration date:
 ```
 docker run \
     -v <host-dir>/share:/home/foo/share \
-    -p 2222:22 -d david-garcia-garcia/sftp \
+    -p 2222:22 -d davidbcn86/sftp \
     'foo:$1$0G2g0GSt$ewU0t6GXG15.0hWoOX8X9.:e:1001:100:share:2024-12-31'
 ```
 
@@ -287,7 +287,7 @@ docker run \
     -v <host-dir>/id_rsa.pub:/home/foo/.ssh/keys/id_rsa.pub:ro \
     -v <host-dir>/id_other.pub:/home/foo/.ssh/keys/id_other.pub:ro \
     -v <host-dir>/share:/home/foo/share \
-    -p 2222:22 -d david-garcia-garcia/sftp \
+    -p 2222:22 -d davidbcn86/sftp \
     foo::1001
 ```
 
@@ -300,7 +300,7 @@ docker run \
     -v <host-dir>/ssh_host_ed25519_key:/etc/ssh/ssh_host_ed25519_key \
     -v <host-dir>/ssh_host_rsa_key:/etc/ssh/ssh_host_rsa_key \
     -v <host-dir>/share:/home/foo/share \
-    -p 2222:22 -d david-garcia-garcia/sftp \
+    -p 2222:22 -d davidbcn86/sftp \
     foo::1001
 ```
 

@@ -39,13 +39,13 @@ jobs:
             docker build \
               --build-arg ALPINE_VERSION=${{ env.ALPINE_VERSION }} \
               -f Dockerfile-alpine \
-              -t david-garcia-garcia/sftp:alpine \
+              -t davidbcn86/sftp:test-alpine \
               .
           else
             docker build \
               --build-arg DEBIAN_VERSION=${{ env.DEBIAN_VERSION }} \
               -f Dockerfile \
-              -t david-garcia-garcia/sftp:latest \
+              -t davidbcn86/sftp:test-debian \
               .
           fi
 
@@ -53,9 +53,9 @@ jobs:
         run: |
           mkdir -p /tmp/docker-images
           if [ "${{ matrix.variant }}" = "alpine" ]; then
-            docker save david-garcia-garcia/sftp:alpine -o /tmp/docker-images/sftp-alpine.tar
+            docker save davidbcn86/sftp:test-alpine -o /tmp/docker-images/sftp-alpine.tar
           else
-            docker save david-garcia-garcia/sftp:latest -o /tmp/docker-images/sftp-debian.tar
+            docker save davidbcn86/sftp:test-debian -o /tmp/docker-images/sftp-debian.tar
           fi
 
       - name: Upload Docker image artifact
@@ -146,7 +146,7 @@ jobs:
         variant: [debian, alpine]
     env:
       REGISTRY: docker.io
-      IMAGE_NAME: david-garcia-garcia/sftp
+      IMAGE_NAME: davidbcn86/sftp
     
     steps:
       - name: Checkout repository
@@ -184,10 +184,7 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{version}}-${{ env.VARIANT_TAG }}-${{ env.BASE_VERSION }}
-            type=semver,pattern={{major}}.{{minor}}-${{ env.VARIANT_TAG }}
-            type=raw,value=${{ env.VARIANT_TAG }}
-            type=raw,value=latest,enable=${{ matrix.variant == 'debian' }}
+            type=semver,pattern={{raw}}-${{ env.VARIANT_TAG }}-${{ env.BASE_VERSION }}
       
       - name: Build and push Docker image
         id: push
@@ -249,15 +246,12 @@ jobs:
           
           **Debian-based:**
           \`\`\`bash
-          docker pull david-garcia-garcia/sftp:${VERSION}-debian-${DEBIAN_VERSION}
-          docker pull david-garcia-garcia/sftp:debian
-          docker pull david-garcia-garcia/sftp:latest
+          docker pull davidbcn86/sftp:${VERSION}-debian-${DEBIAN_VERSION}
           \`\`\`
           
           **Alpine-based:**
           \`\`\`bash
-          docker pull david-garcia-garcia/sftp:${VERSION}-alpine-${ALPINE_VERSION}
-          docker pull david-garcia-garcia/sftp:alpine
+          docker pull davidbcn86/sftp:${VERSION}-alpine-${ALPINE_VERSION}
           \`\`\`
           
           ### 🔧 Base Images
