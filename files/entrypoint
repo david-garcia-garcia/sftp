@@ -82,6 +82,11 @@ if [ ! -f "$userConfFinalPath" ]; then
         done
     fi
 
+    # Export SFTP_READONLY so it's available in create-sftp-user subshell
+    if [ -n "$SFTP_READONLY" ]; then
+        export SFTP_READONLY
+    fi
+
     # Check that we have users in config
     if [ -f "$userConfFinalPath" ] && [ "$(wc -l < "$userConfFinalPath")" -gt 0 ]; then
         # Import users from final conf file
