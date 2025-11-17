@@ -5,7 +5,8 @@ on:
     branches:
       - '**'  # Trigger on any branch
     tags:
-      - 'v*'
+      - 'v*'      # Direct version tags (e.g., v1.0.0)
+      - '**/v*'   # Version tags with path prefixes (e.g., master/v1.0.0)
   pull_request:
     branches:
       - '**'  # Trigger on PRs to any branch
