@@ -184,7 +184,7 @@ jobs:
         with:
           images: ${{ env.IMAGE_NAME }}
           tags: |
-            type=semver,pattern={{raw}}-${{ env.VARIANT_TAG }}-${{ env.BASE_VERSION }}
+            type=ref,event=tag,suffix=-${{ env.VARIANT_TAG }}-${{ env.BASE_VERSION }}
       
       - name: Build and push Docker image
         id: push
