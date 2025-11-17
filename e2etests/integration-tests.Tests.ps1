@@ -550,21 +550,19 @@ Describe "SFTP Server - Security Tests" {
                 # Wait for container to be ready
                 Start-Sleep -Seconds 5
                 
-                # Get container IP address
-                $containerIp = Get-ContainerIpAddress -ContainerName $container.ContainerName -Network "sftp_sftp-network"
-                
-                if (-not $containerIp) {
-                    Set-ItResult -Skip -Because "Could not determine container IP address"
-                    return
-                }
+                # Use container name as hostname (Docker DNS resolves container names on the same network)
+                $containerHost = $container.ContainerName
                 
                 # Create a test file for user1
-                $testFileContent = "This is user1's secret file - $(Get-Random)"
+                $testFileContent = "This is user1 secret file - $(Get-Random)"
                 $testFileLocal = "/tmp/user1_secret_$(Get-Random).txt"
-                Invoke-SftpClientCommand -Command "echo '$testFileContent' > $testFileLocal" | Out-Null
+                $createResult = Invoke-SftpClientCommand -Command "printf '%s\n' '$testFileContent' > $testFileLocal"
+                if (-not $createResult.Success) {
+                    throw "Failed to create test file: $($createResult.Output)"
+                }
                 
                 # Upload file as user1 to their files directory
-                $uploadResult = Send-SftpFile -HostName $containerIp -Port 22 `
+                $uploadResult = Send-SftpFile -HostName $containerHost -Port 22 `
                     -Username "isoluser1" -Password "pass1" `
                     -LocalPath $testFileLocal -RemotePath "files/user1_secret.txt" `
                     -ClientContainer "sftp-client"
@@ -572,7 +570,7 @@ Describe "SFTP Server - Security Tests" {
                 $uploadResult.Success | Should -Be $true -Because "User1 should be able to upload their own file"
                 
                 # Try to list files as user2 - should NOT see user1's file
-                $listResult = Test-SftpConnection -HostName $containerIp -Port 22 `
+                $listResult = Test-SftpConnection -HostName $containerHost -Port 22 `
                     -Username "isoluser2" -Password "pass2" `
                     -Commands @("cd files", "ls")
                 
@@ -580,29 +578,44 @@ Describe "SFTP Server - Security Tests" {
                 
                 # Verify user2 cannot see user1's file
                 # The file should not appear in user2's directory listing
-                $listResult.Output | Should -Not -Match "user1_secret" -Because "User2 should not see user1's files"
+                $hasUser1FileInFirstCheck = [bool]($listResult.Output -like "*user1_secret*")
+                $hasUser1FileInFirstCheck | Should -Be $false -Because "User2 should not see user1's files. Full output: $($listResult.Output)"
                 
                 # Verify user2 can only see their own files (chroot isolation)
                 # User2 should only see files in their own directory, not user1's files
                 # Create a file for user2 to verify their directory works
                 $testFile2Local = "/tmp/user2_file_$(Get-Random).txt"
-                Invoke-SftpClientCommand -Command "echo 'User2 file' > $testFile2Local" | Out-Null
+                $createResult2 = Invoke-SftpClientCommand -Command "printf '%s\n' 'User2 file' > $testFile2Local"
+                if (-not $createResult2.Success) {
+                    throw "Failed to create user2 test file: $($createResult2.Output)"
+                }
                 
-                $uploadResult2 = Send-SftpFile -HostName $containerIp -Port 22 `
+                $uploadResult2 = Send-SftpFile -HostName $containerHost -Port 22 `
                     -Username "isoluser2" -Password "pass2" `
                     -LocalPath $testFile2Local -RemotePath "files/user2_file.txt" `
                     -ClientContainer "sftp-client"
                 
                 $uploadResult2.Success | Should -Be $true -Because "User2 should be able to upload their own file"
                 
+                # Small delay to ensure file is written
+                Start-Sleep -Milliseconds 500
+                
                 # List user2's files - should only see their own file, not user1's
-                $listResult2 = Test-SftpConnection -HostName $containerIp -Port 22 `
+                $listResult2 = Test-SftpConnection -HostName $containerHost -Port 22 `
                     -Username "isoluser2" -Password "pass2" `
-                    -Commands @("cd files", "ls -la")
+                    -Commands @("cd files", "ls")
                 
                 $listResult2.Success | Should -Be $true -Because "User2 should be able to list their own directory"
-                $listResult2.Output | Should -Match "user2_file" -Because "User2 should see their own file"
-                $listResult2.Output | Should -Not -Match "user1_secret" -Because "User2 should NOT see user1's files (chroot isolation)"
+                
+                # Verify user2 can see their own file
+                # Check if output contains the file name
+                $hasUser2File = $listResult2.Output -like "*user2_file*"
+                $hasUser2File | Should -Be $true -Because "User2 should see their own file. Full output: $($listResult2.Output)"
+                
+                # Verify user2 cannot see user1's file
+                # -like returns $null when no match, so explicitly check for false
+                $hasUser1File = [bool]($listResult2.Output -like "*user1_secret*")
+                $hasUser1File | Should -Be $false -Because "User2 should NOT see user1's files (chroot isolation). Full output: $($listResult2.Output)"
                 
                 # Cleanup user2 test file
                 Invoke-SftpClientCommand -Command "rm -f $testFile2Local" -IgnoreError | Out-Null
