@@ -35,7 +35,9 @@ Subsystem sftp internal-sftp
 ForceCommand internal-sftp
 ChrootDirectory %h
 
-# Log level
+# Logging configuration
+# Use AUTH facility for authentication logging (login attempts, failures, etc.)
+SyslogFacility AUTH
 ${SSHD_LOG_LEVEL}
 
 # Apply config from sub-files. Values in sub-files generally overrides values here.
