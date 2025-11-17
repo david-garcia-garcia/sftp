@@ -104,6 +104,7 @@ All SSHD settings can be configured via environment variables:
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `SFTP_USERS` | _(none)_ | Space-separated list of users to create (syntax: `user:pass[:e][:uid[:gid[:dir1[,dir2]...][:expiry_date]]]`) |
+| `SFTP_USER_DIRS_BASE` | _(none)_ | Optional base path for user directories. When set, user directories are created in `$SFTP_USER_DIRS_BASE/$user/$dirPath` and symlinked from `/home/$user/$dirPath`. Useful for SMB/SAMBA mounts or external storage where file permissions cannot be changed. |
 
 Example usage:
 ```bash
@@ -117,6 +118,26 @@ docker run \
 ```
 
 **Note**: Just set the value (e.g., `VERBOSE`, `INFO`), not the full directive. The entrypoint will format it correctly for `sshd_config`.
+
+#### Using External Storage (SMB/SAMBA mounts)
+
+When using SMB/SAMBA mounts or other external storage where file permissions cannot be changed, you can use `SFTP_USER_DIRS_BASE` to store user directories in an alternative location:
+
+```bash
+docker run \
+  -e SFTP_USER_DIRS_BASE=/mnt/smb/data \
+  -e SFTP_USERS="user1:pass1:::upload,download user2:pass2:::files" \
+  -v /path/to/smb/mount:/mnt/smb/data \
+  -p 2222:22 \
+  david-garcia-garcia/sftp
+```
+
+This will:
+- Create directories in `/mnt/smb/data/user1/upload`, `/mnt/smb/data/user1/download`, etc.
+- Create symlinks from `/home/user1/upload` → `/mnt/smb/data/user1/upload`
+- Maintain the chroot structure while storing data on external storage
+
+**Note**: The symlinks are owned by root (required for chroot), while the actual directories may have different permissions depending on your mount configuration.
 
 # Usage
 

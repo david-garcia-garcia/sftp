@@ -3,12 +3,12 @@ name: Build and Test
 on:
   push:
     branches:
-      - master
+      - '**'  # Trigger on any branch
     tags:
       - 'v*'
   pull_request:
     branches:
-      - master
+      - '**'  # Trigger on PRs to any branch
 
 permissions:
   contents: read

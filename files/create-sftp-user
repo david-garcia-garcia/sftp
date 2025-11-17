@@ -100,15 +100,49 @@ fi
 
 # Make sure dirs exists
 if [ -n "$dir" ]; then
+    # Check if SFTP_USER_DIRS_BASE is set (for SMB/SAMBA mounts or other external storage)
+    # If set, create directories in that location and symlink from /home/$user
+    userDirsBase="${SFTP_USER_DIRS_BASE:-}"
+    
     IFS=',' read -ra dirArgs <<< "$dir"
     for dirPath in "${dirArgs[@]}"; do
-        dirPath="/home/$user/$dirPath"
-        if [ ! -d "$dirPath" ]; then
-            log "Creating directory: $dirPath"
-            mkdir -p "$dirPath"
-            chown -R "$uid:users" "$dirPath"
+        homeDirPath="/home/$user/$dirPath"
+        
+        if [ -n "$userDirsBase" ]; then
+            # Use alternative base location
+            actualDirPath="$userDirsBase/$user/$dirPath"
+            
+            # Create the actual directory in the alternative location
+            if [ ! -d "$actualDirPath" ]; then
+                log "Creating directory in alternative location: $actualDirPath"
+                mkdir -p "$actualDirPath"
+                # Try to set permissions (may fail on SMB mounts, but try anyway)
+                chown -R "$uid:users" "$actualDirPath" 2>/dev/null || log "WARNING: Could not set permissions on $actualDirPath (may be on SMB mount)"
+            else
+                log "Directory already exists in alternative location: $actualDirPath"
+            fi
+            
+            # Create parent directory for symlink (handles nested paths like subdir/nested)
+            linkParentDir="$(dirname "$homeDirPath")"
+            mkdir -p "$linkParentDir"
+            chown root:root "$linkParentDir"
+            chmod 755 "$linkParentDir"
+            
+            # Create symlink from home directory to actual location
+            log "Creating symlink from $homeDirPath to $actualDirPath"
+            ln -s "$actualDirPath" "$homeDirPath"
+            
+            # Ensure symlink is owned by root (required for chroot)
+            chown root:root "$homeDirPath" 2>/dev/null || true
         else
-            log "Directory already exists: $dirPath"
+            # Default behavior: create directory directly in /home/$user
+            if [ ! -d "$homeDirPath" ]; then
+                log "Creating directory: $homeDirPath"
+                mkdir -p "$homeDirPath"
+                chown -R "$uid:users" "$homeDirPath"
+            else
+                log "Directory already exists: $homeDirPath"
+            fi
         fi
     done
 fi
