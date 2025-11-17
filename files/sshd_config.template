@@ -1,0 +1,40 @@
+# Secure defaults
+# See: https://stribika.github.io/2015/01/04/secure-secure-shell.html
+Protocol 2
+HostKey /etc/ssh/ssh_host_ed25519_key
+HostKey /etc/ssh/ssh_host_rsa_key
+
+# Port configuration
+Port ${SSHD_PORT}
+
+# Faster connection
+# See: https://github.com/atmoz/sftp/issues/11
+UseDNS no
+
+# Limited access
+PermitRootLogin no
+X11Forwarding no
+AllowTcpForwarding no
+
+# Authentication methods
+PasswordAuthentication ${SSHD_PASSWORD_AUTH}
+PubkeyAuthentication ${SSHD_PUBKEY_AUTH}
+
+# Security hardening
+# Limit failed authentication attempts per connection
+MaxAuthTries ${SSHD_MAX_AUTH_TRIES}
+
+# Limit time for unauthenticated connections (seconds)
+LoginGraceTime ${SSHD_LOGIN_GRACE_TIME}
+
+# Limit simultaneous unauthenticated connections (prevents brute force attacks)
+MaxStartups ${SSHD_MAX_STARTUPS}
+
+# Force sftp and chroot jail
+Subsystem sftp internal-sftp
+ForceCommand internal-sftp
+ChrootDirectory %h
+
+# Log level
+${SSHD_LOG_LEVEL}
+

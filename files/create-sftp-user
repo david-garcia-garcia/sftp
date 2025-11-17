@@ -47,6 +47,7 @@ fi
 uid="${args[$((skipIndex+2))]}"; validateArg "UID" "$uid" "$reUid" || exit 1
 gid="${args[$((skipIndex+3))]}"; validateArg "GID" "$gid" "$reGid" || exit 1
 dir="${args[$((skipIndex+4))]}"; validateArg "dirs" "$dir" "$reDir" || exit 1
+expiryDate="${args[$((skipIndex+5))]}"
 
 if getent passwd "$user" > /dev/null; then
     log "WARNING: User \"$user\" already exists. Skipping."
@@ -110,4 +111,47 @@ if [ -n "$dir" ]; then
             log "Directory already exists: $dirPath"
         fi
     done
+fi
+
+# Set account expiration date if provided
+if [ -n "$expiryDate" ]; then
+    log "Setting expiration date for user $user: $expiryDate"
+    
+    expiryDateFormatted=""
+    
+    # Check if it's YYYY-MM-DD format (preferred)
+    if [[ "$expiryDate" =~ ^[0-9]{4}-[0-9]{2}-[0-9]{2}$ ]]; then
+        expiryDateFormatted="$expiryDate"
+    # Check if it's YYYYMMDD format - convert to YYYY-MM-DD
+    elif [[ "$expiryDate" =~ ^[0-9]{8}$ ]]; then
+        year="${expiryDate:0:4}"
+        month="${expiryDate:4:2}"
+        day="${expiryDate:6:2}"
+        expiryDateFormatted="$year-$month-$day"
+    fi
+    
+    # Set expiration using usermod (works on both Debian and Alpine)
+    if [ -n "$expiryDateFormatted" ]; then
+        if command -v usermod &> /dev/null; then
+            # usermod -e accepts YYYY-MM-DD format
+            usermod -e "$expiryDateFormatted" "$user" 2>/dev/null || log "WARNING: Failed to set expiration date for user $user"
+        elif command -v chage &> /dev/null; then
+            # chage -E accepts YYYY-MM-DD format (GNU chage) or days since epoch
+            # Try YYYY-MM-DD first
+            chage -E "$expiryDateFormatted" "$user" 2>/dev/null || {
+                # If that fails, try converting to days since epoch
+                if command -v date &> /dev/null; then
+                    expiryEpoch=$(date -d "$expiryDateFormatted" +%s 2>/dev/null || date -j -f "%Y-%m-%d" "$expiryDateFormatted" +%s 2>/dev/null || echo "")
+                    if [ -n "$expiryEpoch" ]; then
+                        expiryDays=$((expiryEpoch / 86400))
+                        chage -E "$expiryDays" "$user" 2>/dev/null || log "WARNING: Failed to set expiration date for user $user"
+                    fi
+                fi
+            }
+        else
+            log "WARNING: Neither usermod nor chage found, cannot set expiration date for user $user"
+        fi
+    else
+        log "WARNING: Invalid expiration date format: $expiryDate (expected YYYY-MM-DD or YYYYMMDD)"
+    fi
 fi
