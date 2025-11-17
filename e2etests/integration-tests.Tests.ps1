@@ -150,6 +150,77 @@ Describe "SFTP Server - Directory Creation and Permissions" {
             Remove-TestSftpContainer -ContainerName $container.ContainerName
         }
     }
+    
+    It "Should store files in SFTP_USER_DIRS_BASE location and symlink from home directory" {
+        # Create a test container with SFTP_USER_DIRS_BASE set
+        $userDirsBase = "/mnt/test-data"
+        $testUser = "dirtestuser"
+        $testPassword = "testpass123"
+        $testDir = "upload"
+        
+        $container = New-TestSftpContainer -Image $script:TestConfig.Image `
+            -UserConfig @("${testUser}:${testPassword}:::${testDir}") `
+            -Environment @{ "SFTP_USER_DIRS_BASE" = $userDirsBase } `
+            -Network "sftp_sftp-network"
+        
+        try {
+            $container.Success | Should -Be $true -Because "Container should be created successfully"
+            
+            # Wait for container to be ready
+            Start-Sleep -Seconds 5
+            
+            # Use container name as hostname (Docker DNS resolves container names on the same network)
+            $containerHost = $container.ContainerName
+            
+            # Create a test file to upload
+            $testFileContent = "Test file content for SFTP_USER_DIRS_BASE test - $(Get-Random)"
+            $testFileLocal = "/tmp/dirs_base_test_$(Get-Random).txt"
+            $createResult = Invoke-SftpClientCommand -Command "printf '%s\n' '$testFileContent' > $testFileLocal"
+            if (-not $createResult.Success) {
+                throw "Failed to create test file: $($createResult.Output)"
+            }
+            
+            # Upload file via SFTP
+            $remoteFileName = "test_file.txt"
+            $uploadResult = Send-SftpFile -HostName $containerHost -Port 22 `
+                -Username $testUser -Password $testPassword `
+                -LocalPath $testFileLocal -RemotePath "${testDir}/${remoteFileName}" `
+                -ClientContainer "sftp-client"
+            
+            $uploadResult.Success | Should -Be $true -Because "File upload should succeed. Output: $($uploadResult.Output)"
+            
+            # Small delay to ensure file is written
+            Start-Sleep -Milliseconds 500
+            
+            # Check file exists in symlink location (/home/user/upload/test_file.txt)
+            $symlinkPath = "/home/${testUser}/${testDir}/${remoteFileName}"
+            $checkSymlink = Invoke-SftpServerCommand -ContainerName $container.ContainerName `
+                -Command "test -f '$symlinkPath' && echo 'exists' || echo 'not found'"
+            $checkSymlink.Success | Should -Be $true
+            $checkSymlink.Output.Trim() | Should -Be "exists" -Because "File should exist at symlink location: $symlinkPath. Output: $($checkSymlink.Output)"
+            
+            # Check file exists in actual location (SFTP_USER_DIRS_BASE/user/upload/test_file.txt)
+            $actualPath = "${userDirsBase}/${testUser}/${testDir}/${remoteFileName}"
+            $checkActual = Invoke-SftpServerCommand -ContainerName $container.ContainerName `
+                -Command "test -f '$actualPath' && echo 'exists' || echo 'not found'"
+            $checkActual.Success | Should -Be $true
+            $checkActual.Output.Trim() | Should -Be "exists" -Because "File should exist at actual location: $actualPath. Output: $($checkActual.Output)"
+            
+            # Verify file content is the same in both locations
+            $contentSymlink = Invoke-SftpServerCommand -ContainerName $container.ContainerName `
+                -Command "cat '$symlinkPath'"
+            $contentActual = Invoke-SftpServerCommand -ContainerName $container.ContainerName `
+                -Command "cat '$actualPath'"
+            $contentSymlink.Output.Trim() | Should -Be $testFileContent -Because "File content should match at symlink location"
+            $contentActual.Output.Trim() | Should -Be $testFileContent -Because "File content should match at actual location"
+            
+            # Cleanup test file
+            Invoke-SftpClientCommand -Command "rm -f $testFileLocal" -IgnoreError | Out-Null
+        }
+        finally {
+            Remove-TestSftpContainer -ContainerName $container.ContainerName
+        }
+    }
 }
 
 Describe "SFTP Server - Authentication Tests" {
